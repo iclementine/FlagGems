@@ -343,9 +343,9 @@ def test():
     KW = 3
     H = 1000
     W = 2000
-    STRIDE = 2
+    STRIDE = 1
     PADDING = 1
-    DILATION = 2
+    DILATION = 1
     x = torch.randn((N, H, W, C_IN), dtype=torch.float32, device="cuda").permute(
         0, 3, 1, 2
     )
@@ -368,7 +368,7 @@ def test():
 
 def benchmark():
     N = 10
-    C_IN = 4
+    C_IN = 16
     C_OUT = 16
     GROUPS = 1
     C_IN_PER_GROUP = C_IN // GROUPS
@@ -379,11 +379,11 @@ def benchmark():
     STRIDE = 1
     PADDING = 0
     DILATION = 1
-    x = torch.randn((N, H, W, C_IN), dtype=torch.float32, device="cuda").permute(
+    x = torch.randn((N, H, W, C_IN), dtype=torch.float16, device="cuda").permute(
         0, 3, 1, 2
     )
-    w = torch.randn((C_OUT, C_IN_PER_GROUP, KH, KW), dtype=torch.float32, device="cuda")
-    b = torch.randn((C_OUT,), dtype=torch.float32, device="cuda")
+    w = torch.randn((C_OUT, C_IN_PER_GROUP, KH, KW), dtype=torch.float16, device="cuda")
+    b = torch.randn((C_OUT,), dtype=torch.float16, device="cuda")
 
     def f1():
         return conv2d(
@@ -395,12 +395,24 @@ def benchmark():
             x, w, b, stride=STRIDE, padding=PADDING, dilation=DILATION, groups=GROUPS
         )
 
+    def _f3(x, w, b):
+        return torch.conv2d(
+            x, w, b, stride=STRIDE, padding=PADDING, dilation=DILATION, groups=GROUPS
+        )
+
+    __f3 = torch.compile(_f3)
+
+    def f3():
+        return __f3(x, w, b)
+
     t1 = triton.testing.do_bench(f1, return_mode="median")
     t2 = triton.testing.do_bench(f2, return_mode="median")
+    t3 = triton.testing.do_bench(f3, return_mode="median")
     print(f"triton: {t1} ms")
     print(f"aten: {t2} ms")
+    print(f"compile: {t3} ms")
 
 
 if __name__ == "__main__":
-    test()
+    # test()
     benchmark()
